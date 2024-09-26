@@ -1,0 +1,176 @@
+module MyModule
+
+  implicit none
+
+  contains 
+
+    attributes (global) subroutine gpu_conv (odata,idata)
+
+      real, intent( out ) :: odata(:,:)
+
+      real, intent( in  ) :: idata(:,:)
+
+      integer :: i, j 
+
+      i = blockDim%x * ( blockIdx%x - 1 ) + threadIdx%x  ! Declare thread 
+
+      do j = 2, size(idata,2) - 1 
+
+        ! thread of i was applied to idata to average i, i + 1, i + 2 and j - 1, j + 1, and j + 2 concurrently
+        ! then, the output was applied to odata through applying thread i to odata 
+        ! that is the rationale
+        ! the gpu version should be faster because it has one less loop than the cpu 
+
+        if ( (i+2) <= size(idata,1) ) then 
+
+          odata(i,j-1) = ( idata( i + 1 , j - 1 ) + idata( i + 1, j ) + idata( i + 1, j + 1 ) + & 
+                           idata( i + 2 , j - 1 ) + idata( i + 2, j ) + idata( i + 2, j + 1 ) + &  
+                           idata( i     , j - 1 ) + idata( i    , j ) + idata( i    , j + 1 ) ) / 9.0 
+
+        end if 
+ 
+      end do 
+
+    end subroutine gpu_conv
+
+    subroutine cpu_conv (odata,idata) 
+
+      real, intent( out ) :: odata(:,:)
+
+      real, intent( in  ) :: idata(:,:)
+
+      integer :: i, j 
+
+      do j = 2, size(idata,2) - 1 
+
+        do i = 2, size(idata,1) - 1
+
+          odata(i-1,j-1) = ( idata( i - 1 , j - 1 ) + idata( i - 1, j ) + idata( i - 1, j + 1 ) + & 
+                             idata( i     , j - 1 ) + idata( i    , j ) + idata( i    , j + 1 ) + & 
+                             idata( i + 1 , j - 1 ) + idata( i + 1, j ) + idata( i + 1, j + 1 ) ) / 9.0
+
+        end do 
+
+      end do 
+
+    end subroutine cpu_conv
+
+end module MyModule
+
+program main 
+
+  use cudafor
+
+  use MyModule 
+
+  implicit none 
+
+  integer, parameter :: nx = 10000, ny = 10000 
+
+  real :: a( nx, ny ) 
+
+  integer :: i, j
+
+  real :: b_cpu( nx - 2, ny - 2 )
+
+  type(cudaEvent)::startEvent,stopEvent
+
+  real :: time
+
+  integer :: istat
+
+  real, device :: a_d( nx, ny )
+
+  real, device :: b_d( nx - 2, ny - 2 ) 
+
+  real :: b_gpu( nx - 2, ny - 2 ) 
+
+  istat = cudaEventCreate(startEvent)
+
+  istat = cudaEventCreate(stopEvent)
+
+  do i = 1, nx
+
+    do j = 1, ny 
+
+      a( i, j ) = j 
+
+    end do 
+
+  end do 
+
+  istat = cudaEventRecord(startEvent,0)
+
+  call cpu_conv ( b_cpu, a ) 
+
+  istat = cudaEventRecord(stopEvent,0)
+
+  istat = cudaEventSynchronize(stopEvent)
+
+  istat = cudaEventElapsedTime(time,startEvent,stopEvent)
+
+  write(*,*)'CPU convolution took ',time,' ms'
+
+
+
+  istat = cudaEventRecord(startEvent,0)
+
+  a_d = a 
+
+  call gpu_conv <<<(ceiling(real(size(a,1))/1024)),1024>>> ( b_d, a_d ) 
+
+  b_gpu = b_d 
+
+  istat = cudaEventRecord(stopEvent,0)
+
+  istat = cudaEventSynchronize(stopEvent)
+
+  istat = cudaEventElapsedTime(time,startEvent,stopEvent)
+
+  write(*,*)'GPU convolution took ',time,' ms'
+
+  
+  write(*,*)'First 10 elements of original array' 
+  
+  do i = 1, 10
+
+    do j = 1, 10 
+
+      write(*,'(f5.1)',advance='no')a(i,j)
+
+    end do 
+
+    write(*,*)
+
+  end do 
+
+
+  write(*,*)'First 10 elements of convolved array' 
+
+  do i = 1, 10
+
+    do j = 1, 10 
+
+      write(*,'(f5.1)',advance='no')b_cpu(i,j)
+
+    end do 
+
+    write(*,*)
+
+  end do 
+
+ 
+  write(*,*)'Testing if GPU same as CPU'
+
+  if ( any( b_cpu /= b_gpu ) ) then
+
+    write(*,*)'**** Program Failed ****'
+
+  else
+
+    write(*,*)'**** Program Passed ****'
+
+  end if 
+
+end program main 
+

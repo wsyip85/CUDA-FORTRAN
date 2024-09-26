@@ -1,0 +1,97 @@
+module MyModule
+
+  implicit none
+
+  contains 
+
+    attributes(global) subroutine MatrixTranspose(odata,idata)
+
+      real, intent(out) :: odata(:,:)
+
+      real, intent(in)  :: idata(:,:)
+
+      integer :: i, j 
+
+      i = blockDim%x * (blockIdx%x-1) + threadIdx%x
+
+      if ( i <= size(idata,1) ) then
+
+        do j = 1, size(idata,2) 
+
+          odata(j,i) = idata(i,j) 
+
+        end do 
+
+      endif 
+
+    end subroutine MatrixTranspose
+
+end module MyModule
+
+program main 
+
+  use cudafor
+
+  use MyModule
+
+  implicit none 
+
+  integer, parameter :: nx = 2506, ny = 1700
+
+  real, allocatable :: a(:,:), b(:,:)
+
+  real, device, allocatable :: a_d(:,:), b_d(:,:)
+
+  integer :: i, j 
+
+  allocate( a(nx,ny), b(ny,nx), a_d(nx,ny), b_d(ny,nx) )
+
+  do i = 1, size(a,1)
+
+    do j = 1, size(a,2) 
+
+      a(i,j) = j
+
+    end do 
+
+  end do 
+
+  a_d = a
+
+  call MatrixTranspose <<< ceiling(real(size(a,1))/1024), 1024 >>> ( b_d, a_d ) 
+
+  b = b_d
+
+  write(*,*)'First 10 elements of original array'
+
+  do i = 1, 10
+
+    do j = 1, 10 
+
+      write(*,'(f10.1)',advance='no')a(i,j)
+
+    end do 
+
+    write(*,*)
+
+  end do 
+
+  write(*,*)'First 10 elements of transposed array'
+
+  do i = 1, 10
+
+    do j = 1, 10 
+
+      write(*,'(f10.1)',advance='no')b(i,j)
+
+    end do 
+
+    write(*,*)
+
+  end do 
+
+  write(*,*)'There are ',size(a,1)*size(a,2),' elements '
+  
+end program main 
+
+

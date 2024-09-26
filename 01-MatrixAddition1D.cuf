@@ -1,0 +1,89 @@
+module MyModule
+
+  implicit none
+
+  contains 
+
+    attributes(global) subroutine MatrixAddition (odata,idata,c)
+
+      real, intent(out) :: odata(:)
+
+      real, intent(in)  :: idata(:)
+
+      integer :: i, n
+
+      real, value :: c
+
+      i = blockDim%x * (blockIdx%x - 1) + threadIdx%x ! define threads
+
+      n = size(idata) 
+
+      if ( i <= n ) then ! while i is less than array size, perform 
+                         ! operation
+
+        odata(i) = idata(i) + c ! assign threads to matrix then
+                                ! perform operation 
+
+      end if 
+
+    end subroutine MatrixAddition
+
+end module MyModule
+
+program main
+
+  use cudafor
+
+  use MyModule
+
+  implicit none 
+
+  real, allocatable :: a(:)  
+
+  real, device, allocatable :: a_d(:)
+
+  real, device, allocatable :: b_d(:)
+
+  real, allocatable :: b(:)
+
+  integer :: i 
+
+  integer, parameter :: n = 100
+
+  integer, parameter :: tpb = 256
+
+  real :: c = 1
+
+  allocate( a(n), a_d(n), b(n), b_d(n) ) 
+
+  do i = 1, n
+
+    a(i) = i
+
+  enddo
+
+  a_d = a
+
+  call MatrixAddition <<< ceiling( real(n) / tpb ), tpb >>> ( b_d, a_d, c )
+  
+  b = b_d 
+
+  write(*,*)'First 10 elements of original array'
+
+  do i = 1, 10
+
+    write(*,*)a(i)
+
+  end do 
+
+  write(*,*)'First 10 elements of added array'
+
+  do i = 1, 10 
+
+    write(*,*)b(i)
+
+  end do 
+
+end program main
+
+

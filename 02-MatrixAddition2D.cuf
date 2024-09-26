@@ -1,0 +1,104 @@
+module MyModule
+
+  implicit none
+
+  contains 
+
+    attributes ( global ) subroutine MatrixAddition( odata, idata, c ) 
+
+      real, intent(out) :: odata(:,:)
+
+      real, intent(in)  :: idata(:,:)
+
+      integer :: i, j
+
+      real, value :: c
+
+      i = blockDim%x * (blockIdx%x - 1) + threadIdx%x ! define threads
+
+      if ( i <= size( idata, 1 ) ) then 
+ 
+        do j = 1, size(idata, 2 ) 
+
+          odata(i,j) = idata(i,j) + 1 
+
+        enddo 
+
+      endif 
+
+    end subroutine MatrixAddition
+
+end module MyModule 
+
+program main
+
+  use cudafor
+
+  use MyModule
+
+  implicit none 
+
+  real, allocatable :: a(:,:)  
+
+  real, device, allocatable :: a_d(:,:)
+
+  real, device, allocatable :: b_d(:,:)
+
+  real, allocatable :: b(:,:)
+
+  integer :: i, j
+
+  integer, parameter :: nx = 20560, ny = 10280
+
+  real :: c = 1
+
+  allocate( a(nx,ny), a_d(nx,ny), b_d(nx,ny), b(nx,ny) ) 
+
+  a = 0. 
+
+  a_d = a
+
+  call MatrixAddition <<<ceiling(real(size(a,1))/1024),1024>>> ( b_d, a_d, c ) 
+
+  b = b_d 
+
+  write(*,*)'First 10 elements of original array'
+
+  do i = 1, 10
+
+    do j = 1, 10
+
+      write(*,'(f7.1)',advance='no')a(i,j)
+
+    end do 
+
+    write(*,*)
+
+  end do 
+
+  write(*,*)'First 10 elements of added array'
+
+  do i = 1, 10 
+
+    do j = 1, 10 
+
+      write(*,'(f7.1)',advance='no')b(i,j)
+
+    end do 
+
+    write(*,*)
+
+  end do 
+
+  if ( any(int(b)/=1) ) then 
+
+    write(*,*)'Failed, there are ',nx*ny,' elements '
+
+  else
+
+    write(*,*)'Passed, there are ',nx*ny,' elements '
+
+  endif
+
+end program main  
+
