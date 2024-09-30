@@ -1,0 +1,86 @@
+module MyModule 
+
+  implicit none 
+
+    contains 
+
+      attributes(global) subroutine what_is_my_id ( block, &
+         thread, warp, calc_thread ) 
+
+        integer, intent(out) :: block(:), thread(:), &
+            warp(:), calc_thread(:)
+
+        integer :: i 
+
+        i = blockDim%x * (blockIdx%x - 1) + threadIdx%x ! define threads
+
+        block(i) = blockIdx%x
+
+        thread(i) = threadIdx%x
+
+        warp(i) = threadIdx%x / warpSize 
+
+        calc_thread(i) = i
+
+      end subroutine 
+
+end module 
+
+program main 
+
+  use cudafor
+
+  use MyModule 
+
+  implicit none 
+
+  integer, parameter :: ARRAY_SIZE = 128 
+
+  integer :: gpu_block ( ARRAY_SIZE ), &
+             gpu_thread( ARRAY_SIZE ), & 
+             gpu_warp( ARRAY_SIZE ), &
+             gpu_calc_thread( ARRAY_SIZE )
+             
+  integer, device :: d_gpu_block ( ARRAY_SIZE ), &
+             d_gpu_thread( ARRAY_SIZE ), & 
+             d_gpu_warp( ARRAY_SIZE ), &
+             d_gpu_calc_thread( ARRAY_SIZE )
+
+  integer :: i
+
+  integer, parameter :: num_blocks = 2, &
+                        num_threads = 64 
+
+  d_gpu_block = gpu_block
+
+  d_gpu_thread = gpu_thread
+
+  d_gpu_warp = gpu_warp
+
+  d_gpu_calc_thread = gpu_calc_thread
+
+  call what_is_my_id <<<num_blocks,num_threads>>> ( d_gpu_block, &
+         d_gpu_thread, d_gpu_warp, d_gpu_calc_thread ) 
+
+  gpu_block = d_gpu_block
+
+  gpu_thread = d_gpu_thread
+
+  gpu_warp = d_gpu_warp
+
+  gpu_calc_thread = d_gpu_calc_thread
+  
+  do i = 1, ARRAY_SIZE
+
+    write(*,'(A19,i0.3,A11,i0.3,A10,i0.3,A12,i0.3)')&
+'Calculated Thread: ',gpu_calc_thread(i),' - Block : ',&
+gpu_block(i),' - Warp : ',gpu_warp(i),' - Thread : ',gpu_thread(i)
+
+  enddo
+ 
+end program
+
+
+
+
+
