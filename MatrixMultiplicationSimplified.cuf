@@ -1,0 +1,82 @@
+module MyMod
+  implicit none
+  contains 
+    attributes (global) subroutine parallel_matmul ( a, b, c )
+      real,intent(in)  :: a(:,:), b(:,:)
+      real,intent(out) :: c(:,:)
+      integer :: k, l
+      do l = 1, 4 
+        do k = 1, 4
+          c( blockIdx%y + (l - 1) * 4 ) = & 
+                         a( blockIdx%x * 4 - ( 4 - k ) ) * & 
+                         b( blockIdx%y + (l - 1) * 4 ) + &
+                         c( blockIdx%y + (l - 1) * 4 )
+        enddo
+      enddo
+    end subroutine
+    subroutine serial_mul (a,b,c)
+      real,intent(in)::a(:,:),b(:,:)
+      real,intent(out)::c(:,:)
+      real::csub
+      integer::i,j,k
+      c = 0
+      do i = 1, size(a,1)
+        do j = 1, size(a,2) 
+          do k = 1, size(a,2)
+            c(i,j) = c(i,j) + a(i,k) * b(k,j)
+          enddo 
+        enddo
+      enddo
+    end subroutine 
+    subroutine writeout ( a, fou ) 
+      real,intent(in)::a(:,:)
+      character(*),intent(in)::fou
+      integer::i,j
+      open(10,file=trim(fou))
+        do i = 1, size(a,1)
+          do j = 1, size(a,2)
+            write(10,101,advance='no')a(i,j)
+          enddo
+          write(10,*)
+        enddo
+        101 format (F4.0)
+      close(10)
+    end subroutine
+end module
+program main
+  use MyMod
+  use cudafor
+  implicit none
+    integer,parameter::nx=4,ny=4
+    real::a(ny,nx),b(ny,nx),c_cuda(ny,nx),c_serial(ny,nx)
+    real,device::a_d(ny,nx),b_d(ny,nx),c_cuda_d(ny,nx)
+    type(dim3)::grid,block
+    grid=dim3(4,4,1)
+    block=dim3(4,4,1)
+    ! cuda operation
+    a=1
+    b=1
+    c_cuda=0
+    a_d=a
+    b_d=b
+    c_cuda_d=c_cuda
+    call parallel_matmul <<<grid,block>>> (a_d,b_d,c_cuda_d)
+    a=a_d
+    b=b_d
+    c_cuda=c_cuda_d
+    ! serial operation
+    call serial_mul (a,b,c_serial)
+    ! testing to make sure cuda gives same results 
+    !   as serial operation
+    if (any(c_cuda/=c_serial)) then
+      write(*,*)'Program Failed'
+    else
+      write(*,*)'Program Passed'
+    endif
+    ! writing a, b, and c as text file
+    call writeout (a,'a.txt')
+    call writeout (b,'b.txt')
+    call writeout (c_cuda,'c_cuda.txt')
+    call writeout (c_serial,'c_serial.txt')    
+end program
+
